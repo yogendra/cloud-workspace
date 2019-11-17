@@ -1,11 +1,6 @@
-# Workshop for running workshops
+# Workspace for running on-site workshops
 
 This project is a cloud based workspace for running workshop for Pivotal Platform. It sets up IDE for each participant.
-
-We setup 2 PKS K8s cluster.
-
-1. **Workspace**: Used by participants to compile code and deploy using cf, kubectl, etc.
-1. **Lab**: Required for running PKS hands-on lab.
 
 ## Requirement
 
@@ -90,7 +85,7 @@ We setup 2 PKS K8s cluster.
       helm init --service-account tiller --upgrade
       ```
 
-1. Setup NGIX Ingress (based on [community doc](pks-nginx) )
+1. Setup NGIX Ingress (based on [community doc][pks-nginx] )
 
    1. Install NGIX Ingress cotroller
 
@@ -106,36 +101,44 @@ We setup 2 PKS K8s cluster.
    1. Get IP for ingress controller, might be few minutes before the setup is complete.
 
       ```
-      export NGINX_IP=$(kubectl get service/nginx-nginx-ingress-controller -n ingress -o jsonpath="{.status.loadBalancer.ingress[0].ip}")
+      NGINX_IP=$(kubectl get service/nginx-nginx-ingress-controller -n ingress -o jsonpath="{.status.loadBalancer.ingress[0].ip}")
       ```
 
    1. Setup a DNS name for workspaces ingress resources and point to this IP
 
       ```
-      gcloud dns record-sets transaction start --zone=run-on-cf-zone
+      ZONE_NAME=run-on-cf-zone
+      WORKSPACE_DOMAIN=workspace.run-on.cf
+      gcloud dns record-sets transaction start --zone=$ZONE_NAME
 
-      gcloud dns record-sets transaction add $NGINX_IP --name=\*.workspace.run-on.cf. --ttl=300 --type=A --zone=run-on-cf-zone
+      gcloud dns record-sets transaction add $NGINX_IP --name=\*.$WORKSPACE_DOMAIN. --ttl=300 --type=A --zone=$ZONE_NAME
 
-      gcloud dns record-sets transaction add $NGINX_IP --name=workspace.run-on.cf. --ttl=300 --type=A --zone=run-on-cf-zone
+      gcloud dns record-sets transaction add $NGINX_IP --name=$WORKSPACE_DOMAIN. --ttl=300 --type=A --zone=$ZONE_NAME
 
-      gcloud dns record-sets transaction execute --zone=run-on-cf-zone
+      gcloud dns record-sets transaction execute --zone=$ZONE_NAME
 
       ```
+
+      > Update Change `ZONE_NAME` and `WORKSPACE_DOMAIN` as per your config
 
 1. Prepare SSL certs for the workspace
 
    1. I use certbot and a small wrapper script on it to quickly generate certificate to do this effortlessly.
 
       ```
-      ./certs.sh g gcp workspace.run-on.cf,\*.workspace.run-on.cf
+      certs.sh g gcp $WORKSPACE_DOMAIN,\*.$WORKSPACE_DOMAIN
       ```
 
-   1. Copy certificate to `ssl/workspace` directory
-
-   1. Create secret with ssl Certificates
+   1. Copy key to `ssl/privkey.pem`
 
       ```
-      kubectl create secret tls workspace-cert --key=ssl/workspace/privkey.pem --cert=ssl/workspace/cert.pem
+      cp path-to/privkey.pem $PROJECT_ROOT/ssl/privkey.pem
+      ```
+
+   1. Copy certificatew to `ssl/cert.pem`
+
+      ```
+      cp path-to/cert.pem $PROJECT_ROOT/ssl/cert.pem
       ```
 
 # Create Workspace for each user
@@ -147,8 +150,17 @@ Every user gets its own namespace, service account, secrets, deployment, etc.
 Command to create each user's workspace is:
 
 ```
-TPASSWORD=password TUSER=yogi helm template theia-on-kubernetes/theia-k8s-helm --set user=$TUSER --set password=$TPASSWORD --set namespace=$USER --set-file ingressKey=ssl/privkey.pem --set-file ingressCrt=ssl/cert.pem | kubectl apply -f -
+helm template \
+   theia-on-kubernetes/theia-k8s-helm \
+   --set user=username \
+   --set password=password \
+   --set namespace=username \
+   --set-file ingressKey=ssl/privkey.pem \
+   --set-file ingressCrt=ssl/cert.pem \
+   | kubectl apply -f -
 ```
+
+Replace `username`, `password`, `namespace`, `key` and `cert` with correct values
 
 ## Appendix
 
@@ -183,8 +195,6 @@ TPASSWORD=password TUSER=yogi helm template theia-on-kubernetes/theia-k8s-helm -
        --source-ranges=0.0.0.0/0 \
        --target-tags=worker
    ```
-
-   x
 
 [che-doc]: https://che.eclipse.org/eclipse-che-7-is-now-available-40ae07120b38
 [pks-ingress]: https://community.pivotal.io/s/article/how-to-set-up-an-ingress-controller-for-a-pks-cluster
