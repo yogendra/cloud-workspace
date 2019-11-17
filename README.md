@@ -1,32 +1,33 @@
-# cloud-workspace
+# Workshop for running workshops
 
-Cloud based workspace for demo, handson labs, etc
+This project is a cloud based workspace for running workshop for Pivotal Platform. It sets up IDE for each participant.
+
+We setup 2 PKS K8s cluster.
+
+1. **Workspace**: Used by participants to compile code and deploy using cf, kubectl, etc.
+1. **Lab**: Required for running PKS hands-on lab.
 
 ## Requirement
 
-- Kubernetes Cluster
-- kubectl
-- helm
+- **Instrucator**
+  - PKS Environment
+    - Privileged Plan
+  - kubectl
+  - helm
+- **Participants**
+  - Browser (preferrably Chrome or Chromium based)
+  - Passion to learn
 
-# Setup steps
+# Configure PKS environment
 
-1. Create Global IP
-1. Create a wildcard dns name for your workshop/event. Example: `*.workshop.runs-on.cf` and point to IP
-1. For each user run following command
+1. Setup a PKS cluster.
 
-   ```
-   export USERS=3
-   for USER_ID in {1..$USERS}
-   do
-    USER=user_$USER_ID
-    PASSWORD=keepitsimple
-    helm template . --set user=$USER --set password=$PASSWORD --set namespace=$USER --set domain=workshop-jakarta.runs-on.cf | kubectl apply -f -
-   done
-   ```
+   > I used Toolsmith to setup a cluster quickly on GCP.
 
-# Create PKS environment
-
-I used Toolsmith to setup a cluster quickly on GCP.
+   1. Create a plan `small-privileged` with:
+      - 1 x Master (medium.disk)
+      - 3-50 x Workers (medium.disk)
+      - Enabled Privileges Access
 
 # Setup Workshop Cluster
 
@@ -42,9 +43,11 @@ I used Toolsmith to setup a cluster quickly on GCP.
    manage-cluster provision
    ```
 
-   - Name: workshop
-   - Plan: small
-   - Managed Zone: _choose forom one that is present_
+   - Name: `workspace`
+   - Plan: `small-privileged`
+   - Managed Zone: _`Choose one of the lister zones`_
+
+     (**Example:** run-on-cf-zone)
 
 1. After cluster is created successfully, enable access to cluster
 
@@ -52,9 +55,27 @@ I used Toolsmith to setup a cluster quickly on GCP.
    manage-cluser acccess
    ```
 
-   - Name: workshop
+   - Name: `workspace`
+
+# Configure workspace cluster
+
+1. Get credentials and verify that you are connected to the workspace cluster. **Note** that if you have used `manage-cluster`command, this is already done
+
+   - Get credentials
+
+     ```
+     pks get-credentials workspace
+     ```
+
+   - Check connection
+
+     ```
+     kubect cluster-info
+     ```
 
 1. Setup Helm
+
+   1. You should have `helm` cli install. You can follow instructions [here][helm-install] to install for you platform
 
    1. Setup Helm rbac permission
 
@@ -66,7 +87,7 @@ I used Toolsmith to setup a cluster quickly on GCP.
    1. Install helm
 
       ```
-      helm init --service-account tiller
+      helm init --service-account tiller --upgrade
       ```
 
 1. Setup NGIX Ingress (based on [community doc](pks-nginx) )
@@ -93,33 +114,41 @@ I used Toolsmith to setup a cluster quickly on GCP.
       ```
       gcloud dns record-sets transaction start --zone=run-on-cf-zone
 
-      gcloud dns record-sets transaction add $NGINX_IP --name=\*.workshop.run-on.cf. --ttl=300 --type=A --zone=run-on-cf-zone
+      gcloud dns record-sets transaction add $NGINX_IP --name=\*.workspace.run-on.cf. --ttl=300 --type=A --zone=run-on-cf-zone
+
+      gcloud dns record-sets transaction add $NGINX_IP --name=workspace.run-on.cf. --ttl=300 --type=A --zone=run-on-cf-zone
 
       gcloud dns record-sets transaction execute --zone=run-on-cf-zone
 
       ```
 
-1. Prepare SSL certs for the workshop
+1. Prepare SSL certs for the workspace
 
-   1. I user `certs.sh` + certbot to do this automatically
+   1. I use certbot and a small wrapper script on it to quickly generate certificate to do this effortlessly.
 
       ```
-      ./certs.sh g gcp workshop.run-on.cf,\*.workshop.run-on.cf
+      ./certs.sh g gcp workspace.run-on.cf,\*.workspace.run-on.cf
       ```
 
-   1. Copy certificate to `ssl/` directory
+   1. Copy certificate to `ssl/workspace` directory
 
    1. Create secret with ssl Certificates
 
       ```
-
-      kubectl create secret tls ingress-cert --key=ssl/privkey.pem --cert=ssl/cert.pem 
+      kubectl create secret tls workspace-cert --key=ssl/workspace/privkey.pem --cert=ssl/workspace/cert.pem
       ```
 
-# Configure
+# Create Workspace for each user
 
-[che-doc]: https://che.eclipse.org/eclipse-che-7-is-now-available-40ae07120b38
-[pks-ingress]: https://community.pivotal.io/s/article/how-to-set-up-an-ingress-controller-for-a-pks-cluster
+There are multiple object that need to be setup for each workspace for each user. So I am using a helm template to easily create all at one go.
+
+Every user gets its own namespace, service account, secrets, deployment, etc.
+
+Command to create each user's workspace is:
+
+```
+TPASSWORD=password TUSER=yogi helm template theia-on-kubernetes/theia-k8s-helm --set user=$TUSER --set password=$TPASSWORD --set namespace=$USER --set-file ingressKey=ssl/privkey.pem --set-file ingressCrt=ssl/cert.pem | kubectl apply -f -
+```
 
 ## Appendix
 
@@ -154,3 +183,9 @@ I used Toolsmith to setup a cluster quickly on GCP.
        --source-ranges=0.0.0.0/0 \
        --target-tags=worker
    ```
+
+   x
+
+[che-doc]: https://che.eclipse.org/eclipse-che-7-is-now-available-40ae07120b38
+[pks-ingress]: https://community.pivotal.io/s/article/how-to-set-up-an-ingress-controller-for-a-pks-cluster
+[helm-install]: https://helm.sh/docs/intro/
