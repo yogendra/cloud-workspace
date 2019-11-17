@@ -10,7 +10,7 @@ metadata:
 
 spec:
   rules:
-    - host: {{ .Values.user }}.workspace.run-on.cf
+    - host: {{ .Values.user }}.{{ .Values.workspaceDomain }}
       http:
         paths:
           - backend:
