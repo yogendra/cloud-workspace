@@ -1,0 +1,15 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: theia-{{ .Values.user }}
+  {{- if .Values.namespace }}
+  namespace: {{ .Values.namespace }}
+  {{- end }}
+spec:
+  type: NodePort
+  selector:
+    app: theia-{{ .Values.user }}
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 3000

@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: theia-{{ .Values.user }}
+  {{- if .Values.namespace }}
+  namespace: {{ .Values.namespace }}
+  {{- end }}
+spec:
+  selector:
+    matchLabels:
+      app: theia-{{ .Values.user }}
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: theia-{{ .Values.user }}
+    spec:
+      serviceAccountName: theia-{{ .Values.user }}
+      automountServiceAccountToken: true
+      containers:
+      - name: theia
+        image: {{ .Values.workspaeImage }}
+        livenessProbe:
+          tcpSocket:
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 20
+        readinessProbe:
+          tcpSocket:
+            port: 3000
+          initialDelaySeconds: 10
+          periodSeconds: 20
+        ports:
+        - containerPort: 3000
+        securityContext:
+          privileged: true
+        env:
+        - name: USER
+          valueFrom:
+            secretKeyRef:
+              name: theia-{{ .Values.user }}
+              key: user              
+        - name: PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: theia-{{ .Values.user }}
+              key: password
